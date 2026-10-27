@@ -1,0 +1,44 @@
+version: 2
+
+# The raw layer is the extract files themselves: DuckDB reads each CSV in place through
+# `external_location` (dbt-duckdb), so there are no seeds and nothing is loaded twice.
+# RAW_DIR points the project at another folder of extracts; `make dirty` uses that.
+# Every column is read as text; the staging models own all type casts.
+#
+# Freshness is measured against the `as_of_date` var, not the wall clock (see
+# macros/collect_freshness.sql). The warehouse holds a frozen FY2025 extract, and a clock-based
+# check would fail on it forever. Thresholds are days before as_of_date.
+sources:
+  - name: raw
+    description: CSV extracts of the synthetic ERP and IAM systems, read unchanged.
+    meta:
+      external_location: "read_csv('{{ env_var('RAW_DIR', 'raw_extracts') }}/{name}.csv', header = true, all_varchar = true)"
+    tables:
+      - name: vendors
+      - name: vendor_bank_changes
+      - name: purchase_orders
+      - name: invoices
+        loaded_at_field: "cast(invoice_date as timestamp)"
+        config:
+          freshness:
+            warn_after: {count: 14, period: day}
+            error_after: {count: 45, period: day}
+      - name: payments
+        loaded_at_field: "cast(payment_date as timestamp)"
+        config:
+          freshness:
+            warn_after: {count: 14, period: day}
+            error_after: {count: 45, period: day}
+      - name: gl_journal
+        loaded_at_field: "cast(posting_date as timestamp)"
+        config:
+          freshness:
+            warn_after: {count: 14, period: day}
+            error_after: {count: 45, period: day}
+      - name: employees
+      - name: user_accounts
+      - name: user_roles
+      - name: roles
+      - name: role_permissions
+      - name: sod_matrix
+      - name: holidays

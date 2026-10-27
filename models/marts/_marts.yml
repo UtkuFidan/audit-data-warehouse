@@ -1,0 +1,197 @@
+version: 2
+
+models:
+  - name: dim_vendor
+    description: >
+      Vendor dimension, SCD type 2 on bank details. One row per vendor and bank-detail version;
+      the version valid on a date is `valid_from <= date < valid_to`.
+    config: {contract: {enforced: true}}
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [vendor_id, valid_from]
+    columns:
+      - name: vendor_sk
+        data_type: varchar
+        description: Surrogate key (vendor_id and valid_from).
+        data_tests: [unique, not_null]
+      - name: vendor_id
+        data_type: varchar
+        data_tests: [not_null]
+      - name: vendor_name
+        data_type: varchar
+        data_tests: [not_null]
+      - name: country_code
+        data_type: varchar
+      - name: tax_id
+        data_type: varchar
+      - name: bank_iban
+        data_type: varchar
+        data_tests: [not_null]
+      - name: version_number
+        data_type: integer
+      - name: valid_from
+        data_type: date
+        data_tests: [not_null]
+      - name: valid_to
+        data_type: date
+        description: Exclusive end date; 9999-12-31 for the current version.
+        data_tests: [not_null]
+      - name: is_current
+        data_type: boolean
+        data_tests: [not_null]
+
+  - name: fct_payments
+    description: One row per supplier payment with the vendor bank version on file at payment time.
+    config: {contract: {enforced: true}}
+    columns:
+      - name: payment_id
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: invoice_id
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments: {to: ref('stg_invoices'), field: invoice_id}
+      - name: vendor_id
+        data_type: varchar
+        data_tests: [not_null]
+      - name: vendor_sk
+        data_type: varchar
+        description: Vendor version valid on the payment date.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments: {to: ref('dim_vendor'), field: vendor_sk}
+      - name: payment_date
+        data_type: date
+        data_tests: [not_null]
+      - name: payment_amount
+        data_type: decimal(18,2)
+        data_tests: [positive_amount]
+      - name: invoice_amount
+        data_type: decimal(18,2)
+      - name: bank_iban
+        data_type: varchar
+      - name: is_iban_on_file
+        data_type: boolean
+        description: True when the paid IBAN equals the vendor IBAN valid on the payment date.
+        data_tests:
+          - accepted_values:
+              arguments: {values: [true]}
+      - name: is_amount_mismatch
+        data_type: boolean
+      - name: is_after_bank_change
+        data_type: boolean
+        description: Payment to a new IBAN within the configured window after the change.
+      - name: is_before_vendor_creation
+        data_type: boolean
+        description: Payment dated before the vendor master record was created.
+
+  - name: fct_journal_entries
+    description: One row per general-ledger journal with weekend, holiday, round-amount and poster-permission flags.
+    config: {contract: {enforced: true}}
+    columns:
+      - name: je_id
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: posting_date
+        data_type: date
+        data_tests:
+          - not_null
+          - date_within_period:
+              arguments:
+                period_column: fiscal_period
+                start_date: "{{ var('fiscal_year_start') }}"
+                end_date: "{{ var('fiscal_year_end') }}"
+      - name: fiscal_period
+        data_type: varchar
+      - name: debit_account
+        data_type: integer
+      - name: credit_account
+        data_type: integer
+      - name: journal_amount
+        data_type: decimal(18,2)
+        data_tests: [positive_amount]
+      - name: journal_source
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments: {values: ['AUTO', 'MANUAL']}
+      - name: posted_by_user_id
+        data_type: varchar
+      - name: is_manual
+        data_type: boolean
+      - name: is_weekend
+        data_type: boolean
+      - name: is_holiday
+        data_type: boolean
+      - name: is_round_amount
+        data_type: boolean
+        description: Journal at or above `round_min_amount` that is a multiple of `round_modulus`.
+      - name: poster_can_post_journal
+        data_type: boolean
+
+  - name: dim_user_access
+    description: One row per user account with roles and control flags (SoD conflict, leaver with access).
+    config: {contract: {enforced: true}}
+    columns:
+      - name: user_id
+        data_type: varchar
+        data_tests: [unique, not_null]
+      - name: employee_id
+        data_type: varchar
+      - name: department
+        data_type: varchar
+      - name: account_status
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments: {values: ['ACTIVE', 'DISABLED']}
+      - name: leave_date
+        data_type: date
+      - name: last_login_date
+        data_type: date
+      - name: role_count
+        data_type: integer
+      - name: role_list
+        data_type: varchar
+      - name: has_privileged_role
+        data_type: boolean
+      - name: can_post_journal
+        data_type: boolean
+      - name: has_sod_conflict
+        data_type: boolean
+      - name: is_leaver_with_access
+        data_type: boolean
+
+  - name: audit_exceptions
+    description: >
+      Union of the full-population tests in one schema. Each row is an item to follow up,
+      not a conclusion of error or fraud.
+    config: {contract: {enforced: true}}
+    columns:
+      - name: test_id
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['dup_invoice_exact', 'split_purchase', 'bank_change_payment', 'sod_conflict', 'leaver_active_account', 'payment_before_vendor', 'dup_invoice_fuzzy', 'benford_vendor', 'je_round_amount', 'je_weekend_holiday', 'je_unauthorized_poster']
+      - name: entity
+        data_type: varchar
+        data_tests: [not_null]
+      - name: risk
+        data_type: varchar
+        data_tests: [not_null]
+      - name: evidence
+        data_type: varchar
+        data_tests: [not_null]
+      - name: detected_at
+        data_type: timestamp
+        data_tests: [not_null]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [test_id, entity]

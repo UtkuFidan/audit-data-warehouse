@@ -1,0 +1,76 @@
+version: 2
+
+models:
+  - name: int_journal_lines
+    description: Debit and credit legs of every journal (one row per journal and side).
+    columns:
+      - name: je_id
+        data_tests:
+          - not_null
+          - journal_balanced:
+              arguments:
+                amount_column: amount
+                side_column: side
+      - name: side
+        data_tests:
+          - accepted_values:
+              arguments: {values: ['D', 'C']}
+
+  - name: int_vendor_bank_versions
+    description: SCD2 versions of vendor bank details, derived from the bank-change log.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [vendor_id, valid_from]
+    columns:
+      - name: vendor_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments: {to: ref('stg_vendors'), field: vendor_id}
+      - name: bank_iban
+        data_tests: [not_null]
+
+  - name: int_journal_flags
+    description: One row per journal with weekend, holiday, round-amount and poster-permission flags.
+    columns:
+      - name: je_id
+        data_tests: [unique, not_null]
+
+  - name: int_vendor_benford
+    description: Chi-square, p-value and MAD of first-digit frequencies per vendor.
+    columns:
+      - name: vendor_id
+        data_tests: [unique, not_null]
+      - name: p_value
+        data_tests:
+          - not_null
+
+  - name: int_user_access
+    description: One row per user account with HR record, roles and derived access attributes.
+    columns:
+      - name: user_id
+        data_tests: [unique, not_null]
+
+  - name: int_test_duplicate_invoices
+    description: Exceptions from the exact duplicate invoice test.
+  - name: int_test_split_purchases
+    description: Exceptions from the split purchase test.
+  - name: int_test_payments_after_bank_change
+    description: Exceptions from the payment-after-bank-change test.
+  - name: int_test_sod_conflicts
+    description: Exceptions from the segregation of duties test.
+  - name: int_test_leavers_with_access
+    description: Exceptions from the leaver-with-active-account test.
+  - name: int_test_payments_before_vendor
+    description: Exceptions from the payment-before-vendor-creation test.
+  - name: int_test_duplicate_invoices_fuzzy
+    description: Exceptions from the fuzzy duplicate invoice test (same amount, close dates, same or near-identical vendor).
+  - name: int_test_benford_vendor
+    description: Vendors whose invoice first digits reject Benford's law.
+  - name: int_test_je_round_amount
+    description: Exceptions from the round-amount manual journal test.
+  - name: int_test_je_weekend_holiday
+    description: Exceptions from the weekend and holiday manual journal test.
+  - name: int_test_je_unauthorized_poster
+    description: Exceptions from the unauthorised journal poster test.

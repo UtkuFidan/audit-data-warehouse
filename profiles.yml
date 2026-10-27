@@ -1,0 +1,11 @@
+audit_dw:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: audit_dw.duckdb
+      threads: 4
+    dirty:
+      type: duckdb
+      path: audit_dw_dirty.duckdb
+      threads: 4

@@ -1,0 +1,165 @@
+version: 2
+
+models:
+  - name: stg_vendors
+    description: One row per vendor master record, typed and renamed.
+    columns:
+      - name: vendor_id
+        data_tests: [unique, not_null]
+      - name: vendor_name
+        data_tests: [not_null]
+      - name: current_bank_iban
+        data_tests: [not_null]
+
+  - name: stg_vendor_bank_changes
+    description: One row per vendor bank-detail change.
+    columns:
+      - name: bank_change_id
+        data_tests: [unique, not_null]
+      - name: vendor_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments: {to: ref('stg_vendors'), field: vendor_id}
+      - name: change_date
+        data_tests: [not_null]
+
+  - name: stg_purchase_orders
+    description: One row per purchase order.
+    columns:
+      - name: po_id
+        data_tests: [unique, not_null]
+      - name: vendor_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments: {to: ref('stg_vendors'), field: vendor_id}
+      - name: po_amount
+        data_tests: [positive_amount]
+
+  - name: stg_invoices
+    description: One row per supplier invoice.
+    columns:
+      - name: invoice_id
+        data_tests: [unique, not_null]
+      - name: vendor_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments: {to: ref('stg_vendors'), field: vendor_id}
+      - name: invoice_amount
+        data_tests: [positive_amount]
+
+  - name: stg_payments
+    description: One row per supplier payment.
+    columns:
+      - name: payment_id
+        data_tests: [unique, not_null]
+      - name: invoice_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments: {to: ref('stg_invoices'), field: invoice_id}
+      - name: vendor_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments: {to: ref('stg_vendors'), field: vendor_id}
+      - name: payment_amount
+        data_tests: [positive_amount]
+
+  - name: stg_gl_journal
+    description: One row per general-ledger journal (single debit and credit account pair).
+    columns:
+      - name: je_id
+        data_tests: [unique, not_null]
+      - name: posting_date
+        data_tests:
+          - not_null
+          - date_within_period:
+              arguments:
+                period_column: fiscal_period
+                start_date: "{{ var('fiscal_year_start') }}"
+                end_date: "{{ var('fiscal_year_end') }}"
+      - name: debit_account
+        data_tests: [not_null]
+      - name: credit_account
+        data_tests: [not_null]
+      - name: journal_amount
+        data_tests: [positive_amount]
+      - name: journal_source
+        data_tests:
+          - accepted_values:
+              arguments: {values: ['AUTO', 'MANUAL']}
+
+  - name: stg_employees
+    description: HR master, one row per employee.
+    columns:
+      - name: employee_id
+        data_tests: [unique, not_null]
+
+  - name: stg_user_accounts
+    description: IAM accounts, one row per user (employees and service accounts).
+    columns:
+      - name: user_id
+        data_tests: [unique, not_null]
+      - name: employee_id
+        data_tests:
+          - relationships:
+              arguments: {to: ref('stg_employees'), field: employee_id}
+      - name: account_status
+        data_tests:
+          - accepted_values:
+              arguments: {values: ['ACTIVE', 'DISABLED']}
+
+  - name: stg_user_roles
+    description: Role assignments, one row per user and role.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, role_name]
+    columns:
+      - name: user_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments: {to: ref('stg_user_accounts'), field: user_id}
+      - name: role_name
+        data_tests:
+          - not_null
+          - relationships:
+              arguments: {to: ref('stg_roles'), field: role_name}
+
+  - name: stg_roles
+    description: Role catalogue with a privileged flag.
+    columns:
+      - name: role_name
+        data_tests: [unique, not_null]
+      - name: is_privileged
+        data_tests: [not_null]
+
+  - name: stg_role_permissions
+    description: Permissions granted by each role.
+    columns:
+      - name: role_name
+        data_tests:
+          - relationships:
+              arguments: {to: ref('stg_roles'), field: role_name}
+
+  - name: stg_sod_matrix
+    description: Pairs of roles that must not be held by the same user.
+    columns:
+      - name: role_a_name
+        data_tests:
+          - relationships:
+              arguments: {to: ref('stg_roles'), field: role_name}
+      - name: role_b_name
+        data_tests:
+          - relationships:
+              arguments: {to: ref('stg_roles'), field: role_name}
+
+  - name: stg_holidays
+    description: Public holidays.
+    columns:
+      - name: holiday_date
+        data_tests: [unique, not_null]

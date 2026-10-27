@@ -1,0 +1,12 @@
+.venv/
+target/
+logs/
+dbt_packages/
+*.duckdb
+*.duckdb.wal
+dirty_extracts/
+__pycache__/
+.ruff_cache/
+.sqlfluff_cache/
+node_modules/
+.user.yml
