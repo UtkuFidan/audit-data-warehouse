@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: dbt deps
+      - name: Build models and tests
+        run: dbt build
+      - name: Source freshness
+        run: dbt source freshness
+      - name: Dirty extracts (tests must fail)
+        run: |
+          python scripts/make_dirty_extracts.py
+          RAW_DIR=dirty_extracts dbt run --target dirty
+          if RAW_DIR=dirty_extracts dbt test --target dirty; then echo "dirty run passed, tests are not catching defects"; exit 1; fi
+      - name: Lint Python
+        run: |
+          ruff check scripts
+          ruff format --check scripts
+      - name: Lint SQL
+        run: sqlfluff lint models
+      - name: Exceptions report
+        run: python scripts/exceptions_summary.py && cat reports/exceptions_summary.md
+      - run: dbt docs generate
